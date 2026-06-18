@@ -3,6 +3,9 @@ using Application.DTOs.Settings;
 using Application.Interfaces;
 using Application.Services;
 using Domain.Entities;
+using Hangfire;
+using Hangfire.PostgreSql;
+using Infrastructure.BackGroundServices;
 using Infrastructure.Data;
 using Infrastructure.Seed;
 using Infrastructure.Services;
@@ -17,6 +20,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddHangfire(config => config.UsePostgreSqlStorage(options => options.UseNpgsqlConnection(
+    builder.Configuration.GetConnectionString("DefaultConnection"))));
+
+builder.Services.AddHangfireServer();
 
 builder.Services.AddCors(options =>
 {
@@ -72,7 +80,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); 
-
+builder.Services.AddScoped<SendEmailJob>();
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -98,10 +106,24 @@ using (var scope = app.Services.CreateScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     await RoleSeeder.SeedAsync(roleManager, userManager);
+
 }
+await using var scopes = app.Services.CreateAsyncScope();
+
+var recurringJobManager = scopes.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+recurringJobManager.AddOrUpdate<SendEmailJob>(
+    "send-email",
+    x => x.SendEmail(),
+    "* * * * * *");
+recurringJobManager.AddOrUpdate<DeleteUsersAsync>(
+    "delete-users",
+    x => x.DeleteNotConfirmedUsersAsync(),
+    Cron.Minutely);
+
 
 if (app.Environment.IsDevelopment())
 {
+    app.UseHangfireDashboard("/hangfire");
     app.UseSwagger();
     app.UseSwaggerUI();
 }

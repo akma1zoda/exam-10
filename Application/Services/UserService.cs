@@ -11,26 +11,29 @@ namespace Application.Services;
 public class UserService(
     UserManager<User> userManager,
     RoleManager<IdentityRole> roleManager,
-    ILogger<UserService> logger) : IUserService
+    ILogger<UserService> logger,
+    IMemoryCacheService memoryCacheService,
+    IRedisCacheService redisCacheService) : IUserService
 {
     public async Task<Result<List<GetUserDto>>> GetAllAsync()
     {
-        var users = userManager.Users.ToList();
-        var result = new List<GetUserDto>();
+        const string cacheKey = "Users";
+        var usersInCache = await redisCacheService.GetAsync<List<GetUserDto>>(cacheKey);
 
-        foreach (var user in users)
+        if (usersInCache == null)
         {
-            var roles = await userManager.GetRolesAsync(user);
-            result.Add(new GetUserDto
+            var users = userManager.Users.ToList();
+            var userDto = users.Select(u => new GetUserDto
             {
-                Id = user.Id,
-                Email = user.Email!,
-                FullName = user.FullName!,
-                Roles = roles.ToList()
-            });
+                Id = u.Id,
+                FullName = u.FullName!,
+                Email = u.Email!
+            }).ToList();
+            await redisCacheService.SetAsync<List<GetUserDto>>(cacheKey,userDto,1);
+            return  Result<List<GetUserDto>>.Ok(userDto);
         }
-
-        return Result<List<GetUserDto>>.Ok(result);
+        
+        return Result<List<GetUserDto>>.Ok(usersInCache);
     }
 
     public async Task<Result<GetUserDto>> GetByIdAsync(string id)
@@ -190,7 +193,8 @@ public class UserService(
         {
             logger.LogWarning("Id is required");
             return Result<bool>.Fail("Id is required", ErrorType.Validation);
-        }        var user = await userManager.FindByIdAsync(id);
+        }
+        var user = await userManager.FindByIdAsync(id);
         if (user == null)
         {
             logger.LogWarning("User not found");

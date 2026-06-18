@@ -4,6 +4,7 @@ using Application.DTOs.Users;
 using Application.Interfaces;
 using Domain.Constants;
 using Domain.Entities;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
@@ -61,7 +62,7 @@ public class AuthService(
             {
                 Id = user.Id,
                 Email = user.Email!,
-                FullName = user.FullName,
+                FullName = user.FullName!,
                 Roles = role.ToList()
             },
             Token = token  

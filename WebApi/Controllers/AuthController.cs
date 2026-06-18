@@ -37,8 +37,10 @@ public class AuthController(IAuthService authService) : BaseController
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userId is null) return Unauthorized("User not found in token");
-
+        if (userId == null)
+        {
+            return Unauthorized("User not found in token");
+        }
         var result = await authService.ChangePasswordAsync(userId, dto);
         if (!result.IsSuccess)
         {
